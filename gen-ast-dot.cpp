@@ -22,29 +22,40 @@ public:
     Edge(string s, string e) : start(s), end(e){};
 };
 
-bool read_and_analyze(string original_file_name, vector<Node>& nodes, vector<Edge>& edges){
+class Function{
+public:
+    vector<Node*> nodes;
+    vector<Edge*> edges;
+    string name;
+    Function(string n) : name(n){};
+};
+
+vector<Function*> read_and_analyze(string original_file_name){
+
+    vector<Function*> functions;
+
     ifstream infile(original_file_name);
     if (!infile.is_open()) {
         std::cerr << "Failed to open file: " << original_file_name << std::endl;
-        return false;
+        return functions;
     }
     string line;
     Node *current_node = nullptr;
+    Function *current_function = nullptr;
     string seq;
+    string function_name;
     smatch match;
     while (getline(infile, line))
     {
-        if (line.empty() || line.substr(0, 2) == ";;") {
+        if (line.empty() || line.substr(0, 4) == ";; e") {
             continue;
         }
+        if (line.substr(0, 4) == ";; F"){
+            function_name = line.substr(12, line.length() - 12);
+            current_function = new Function(function_name);
+            functions.push_back(current_function);
+        }
         if (line[0] == '@') {
-            if(current_node!=nullptr){
-                nodes.push_back(*current_node);
-                Node *p = current_node;
-                current_node = nullptr;
-                delete p;
-            }
-
             regex pattern_1(R"(^@\d+)");
             regex_search(line, match, pattern_1);
             string temp = match[0];
@@ -53,6 +64,7 @@ bool read_and_analyze(string original_file_name, vector<Node>& nodes, vector<Edg
             regex_search(line, match, pattern_2);
             string name = match[1];
             current_node = new Node(seq, name);
+            current_function->nodes.push_back(current_node);
         }
 
         regex pattern_3("(op )?\\w+ *: @\\d+");
@@ -70,8 +82,8 @@ bool read_and_analyze(string original_file_name, vector<Node>& nodes, vector<Edg
             regex pattern_5("@(\\d+)");
             regex_search(temp, match, pattern_5);
             string edge_end = match[1];
-            Edge edge(edge_start, edge_end);
-            edges.push_back(edge);
+            Edge* edge = new Edge(edge_start, edge_end);
+            current_function->edges.push_back(edge);
 
             it++;
         }
@@ -85,31 +97,33 @@ bool read_and_analyze(string original_file_name, vector<Node>& nodes, vector<Edg
             itt++;
         }
     }
-
-    if(current_node!=nullptr){
-        nodes.push_back(*current_node);
-        delete current_node;
-    }
-    return true;
+    return functions;
 }
 
-bool write_dot(vector<Node> nodes, vector<Edge> edges){
-    ofstream file("ast.dot",ios::trunc);
+bool write_dot(Function* function){
+    string function_name = function->name;
+    for (int i = 0; i < function_name.length(); i++) {
+        if (!isalnum(function_name[i])) {
+            function_name.replace(i, 1, "_");
+        }
+    }
+    string output_file_name = "ast_" + function_name + ".dot";
+    ofstream file(output_file_name,ios::trunc);
     if (!file.is_open()) {
         std::cerr << "Failed to  create ast.dot" << std::endl;
         return false;
     }
 
-    file << "digraph AST {" << endl;
+    file << "digraph " << function_name << " {" << endl;
     file << "node [shape=record];" << endl;
-    for (auto n : nodes)
+    for (auto n : function->nodes)
     {
         string line="";
-        line += n.seq + " ";
+        line += n->seq + " ";
         line += "[label = \"{";
-        line += n.seq + " " + n.name;
+        line += n->seq + " " + n->name;
         line += " | { ";
-        for(auto f : n.fields){
+        for(auto f : n->fields){
             line += "<" + f + "> " + f + " |";
         }
         line.pop_back();
@@ -117,8 +131,8 @@ bool write_dot(vector<Node> nodes, vector<Edge> edges){
         file << line << endl;
     }
 
-    for(auto e : edges){
-        string line = e.start + " -> " + e.end + ";";
+    for(auto e : function->edges){
+        string line = e->start + " -> " + e->end + ";";
         file << line << endl;
     }
 
@@ -130,27 +144,9 @@ bool write_dot(vector<Node> nodes, vector<Edge> edges){
 int main(int argc, char *argv[]){
 
     string original_file_name = argv[1];
-    vector<Node> nodes;
-    vector<Edge> edges;
-    cout << "read and analyze original file..." << endl;
-    if (read_and_analyze(original_file_name, nodes, edges)){
-        cout << "success!" << endl;
-        cout << "generate ast.dot..." << endl;
-        if(write_dot(nodes, edges)){
-            cout << "success!" << endl;
-            cout << "now you can execute command 'dot -Tpng ast.dot -o ast.png' to generate image" << endl;
-        }
+    vector<Function*> functions;
+    functions = read_and_analyze(original_file_name);
+    for(auto f : functions){
+        write_dot(f);
     }
-    /*
-    for(auto n : nodes){
-        cout << n.seq << endl;
-        for(auto fld : n.fields){
-            cout << fld << " | ";
-        }
-        cout << endl;
-    }*/
-
-    /*for(auto e : edges){
-        cout << e.start << " -> " << e.end << endl;
-    }*/
 }
